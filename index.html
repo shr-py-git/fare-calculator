@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FairRoute – Transparent Fare Estimator</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: 30px auto;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 16px;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      border: 1px solid #ccc;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    li { padding: 8px; cursor: pointer; }
+    li:hover { background: #f0f0f0; }
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #map {
+      height: 350px;
+      margin-top: 20px;
+      border: 1px solid #ccc;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 17px;
+    }
+    .fare-box {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      background: #fafafa;
+    }
+  </style>
+</head>
+<body>
+
+<h2 id="title">FairRoute – Transparent Fare Estimator</h2>
+
+<select onchange="setLanguage(this.value)">
+  <option value="en">English</option>
+  <option value="hi">हिन्दी</option>
+  <option value="es">Español</option>
+  <option value="fr">Français</option>
+</select>
+
+<input id="from" placeholder="Pickup location" oninput="debouncedSuggest(this,'fromList')">
+<ul id="fromList"></ul>
+
+<input id="to" placeholder="Drop location" oninput="debouncedSuggest(this,'toList')">
+<ul id="toList"></ul>
+
+<button onclick="calculate()" id="calcBtn">Calculate</button>
+
+<div id="map"></div>
+<div id="result"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+/* ---------- LANGUAGE DATA ---------- */
+let currentLang = "en";
+
+const lang = {
+  en: {
+    title: "FairRoute – Transparent Fare Estimator",
+    calc: "Calculate",
+    enter: "Enter both locations.",
+    calcTxt: "Calculating...",
+    error: "Error calculating route.",
+    distance: "Distance",
+    pickup: "Pickup",
+    drop: "Drop",
+    estimate: "Estimated fair range"
+  },
+  hi: {
+    title: "फेयररूट – पारदर्शी किराया अनुमान",
+    calc: "गणना करें",
+    enter: "कृपया दोनों स्थान दर्ज करें।",
+    calcTxt: "गणना की जा रही है...",
+    error: "मार्ग की गणना में त्रुटि।",
+    distance: "दूरी",
+    pickup: "पिकअप",
+    drop: "ड्रॉप",
+    estimate: "अनुमानित उचित किराया"
+  },
+  es: {
+    title: "FairRoute – Estimador de tarifas",
+    calc: "Calcular",
+    enter: "Ingrese ambas ubicaciones.",
+    calcTxt: "Calculando...",
+    error: "Error al calcular la ruta.",
+    distance: "Distancia",
+    pickup: "Recogida",
+    drop: "Destino",
+    estimate: "Rango de tarifa justa"
+  },
+  fr: {
+    title: "FairRoute – Estimation de tarif",
+    calc: "Calculer",
+    enter: "Veuillez entrer les deux lieux.",
+    calcTxt: "Calcul en cours...",
+    error: "Erreur de calcul de l'itinéraire.",
+    distance: "Distance",
+    pickup: "Départ",
+    drop: "Arrivée",
+    estimate: "Fourchette de prix équitable"
+  }
+};
+
+function t(key) {
+  return lang[currentLang][key];
+}
+
+function setLanguage(l) {
+  currentLang = l;
+  document.getElementById("title").innerText = t("title");
+  document.getElementById("calcBtn").innerText = t("calc");
+}
+
+/* ---------- MAP INIT ---------- */
+let map = L.map("map").setView([20.5937, 78.9629], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+
+let pickupMarker, dropMarker, routeLine;
+let debounceTimer;
+
+/* ---------- AUTOCOMPLETE ---------- */
+function debouncedSuggest(input, listId) {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => suggest(input, listId), 300);
+}
+
+async function suggest(input, listId) {
+  if (input.value.length < 3) return;
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&limit=10&countrycodes=in&q=${encodeURIComponent(input.value)}`
+  );
+  const data = await res.json();
+  const list = document.getElementById(listId);
+  list.innerHTML = "";
+  data.forEach(p => {
+    const li = document.createElement("li");
+    li.textContent = p.display_name;
+    li.onclick = () => { input.value = p.display_name; list.innerHTML = ""; };
+    list.appendChild(li);
+  });
+}
+
+/* ---------- GEO + DISTANCE ---------- */
+async function geocode(place) {
+  const r = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=in&q=${encodeURIComponent(place)}`
+  );
+  const d = await r.json();
+  return { lat: +d[0].lat, lng: +d[0].lon };
+}
+
+function haversine(a,b,c,d) {
+  const R=6371;
+  const dLat=(c-a)*Math.PI/180;
+  const dLon=(d-b)*Math.PI/180;
+  const x=Math.sin(dLat/2)**2+
+  Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+/* ---------- FARE ---------- */
+function estimateFare(km){
+  return {
+    bike:[20+km*7,30+km*10],
+    auto:[30+km*12,40+km*18],
+    cab:[50+km*18,70+km*25]
+  };
+}
+
+/* ---------- MAIN ---------- */
+async function calculate() {
+  const f=document.getElementById("from").value;
+  const t1=document.getElementById("to").value;
+  const r=document.getElementById("result");
+
+  if(!f||!t1){ r.innerText=t("enter"); return; }
+
+  r.innerText=t("calcTxt");
+
+  try{
+    const s=await geocode(f), e=await geocode(t1);
+    const km=haversine(s.lat,s.lng,e.lat,e.lng);
+    const fare=estimateFare(km);
+
+    if(pickupMarker) map.removeLayer(pickupMarker);
+    if(dropMarker) map.removeLayer(dropMarker);
+    if(routeLine) map.removeLayer(routeLine);
+
+    pickupMarker=L.marker([s.lat,s.lng]).addTo(map).bindPopup(t("pickup"));
+    dropMarker=L.marker([e.lat,e.lng]).addTo(map).bindPopup(t("drop"));
+    routeLine=L.polyline([[s.lat,s.lng],[e.lat,e.lng]]).addTo(map);
+    map.fitBounds(routeLine.getBounds());
+
+    r.innerHTML=`
+      <b>${t("distance")}:</b> ${km.toFixed(2)} km
+      <div class="fare-box">🚲 Bike: ₹${fare.bike[0]|0} – ₹${fare.bike[1]|0}</div>
+      <div class="fare-box">🛺 Auto: ₹${fare.auto[0]|0} – ₹${fare.auto[1]|0}</div>
+      <div class="fare-box">🚕 Cab: ₹${fare.cab[0]|0} – ₹${fare.cab[1]|0}</div>
+      <small>*${t("estimate")}</small>
+    `;
+  } catch {
+    r.innerText=t("error");
+  }
+}
+</script>
+
+</body>
+</html>
