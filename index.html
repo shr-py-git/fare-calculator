@@ -207,6 +207,10 @@ async function calculate() {
     const km=haversine(s.lat,s.lng,e.lat,e.lng);
     const fare=estimateFare(km);
 
+    // Local Auto: 1/3 of Auto fare
+    const localAutoMin = (fare.auto[0]/3).toFixed(0);
+    const localAutoMax = (fare.auto[1]/3).toFixed(0);
+
     if(pickupMarker) map.removeLayer(pickupMarker);
     if(dropMarker) map.removeLayer(dropMarker);
     if(routeLine) map.removeLayer(routeLine);
@@ -220,6 +224,7 @@ async function calculate() {
       <b>${t("distance")}:</b> ${km.toFixed(2)} km
       <div class="fare-box">🚲 Bike: ₹${fare.bike[0]|0} – ₹${fare.bike[1]|0}</div>
       <div class="fare-box">🛺 Auto: ₹${fare.auto[0]|0} – ₹${fare.auto[1]|0}</div>
+      <div class="fare-box">🛺 Local Auto: ₹${localAutoMin} – ₹${localAutoMax}</div>
       <div class="fare-box">🚕 Cab: ₹${fare.cab[0]|0} – ₹${fare.cab[1]|0}</div>
       <small>*${t("estimate")}</small>
     `;
