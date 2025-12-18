@@ -46,6 +46,27 @@ h2 {
   color: var(--primary-dark);
   animation: slideDown 0.6s ease;
 }
+    .title {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.title .brand {
+  display: block;
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  letter-spacing: 1px;
+}
+
+.title .tagline {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-12px); }
@@ -196,13 +217,21 @@ small {
   button {
     font-size: 15px;
   }
+    .title .brand {
+    font-size: 30px;
+  }
+
 }
 
   </style>
 </head>
 <body>
 
-<h2 id="title">FairRoute – Transparent Fare Estimator</h2>
+<h2 class="title">
+  <span class="brand" id="brand">FairRoute</span>
+  <span class="tagline" id="tagline">Transparent Fare Estimator</span>
+</h2>
+
 
 <select onchange="setLanguage(this.value)">
   <option value="en">English</option>
@@ -281,9 +310,19 @@ function t(key) {
 
 function setLanguage(l) {
   currentLang = l;
-  document.getElementById("title").innerText = t("title");
+
+  // Keep brand name fixed
+  document.getElementById("brand").innerText = "FairRoute";
+
+  // Update only subtitle
+  const fullTitle = t("title");
+  const parts = fullTitle.split("–");
+  document.getElementById("tagline").innerText =
+    parts.length > 1 ? parts[1].trim() : fullTitle;
+
   document.getElementById("calcBtn").innerText = t("calc");
 }
+
 
 /* ---------- MAP INIT ---------- */
 let map = L.map("map").setView([20.5937, 78.9629], 5);
